@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>バズのスペースアドベンチャー</title>
+  <style>
+    :root{
+      --bg:#06070b; --line:#1b2a4a; --text:#e9f0ff; --muted:#9fb3d9;
+      --accent:#6cf2ff; --good:#76ff9d; --warn:#ffd36c; --bad:#ff6c8b;
+      --shadow: 0 14px 40px rgba(0,0,0,.45); --radius: 18px;
+
+      /* iPadでも崩れないための可変サイズ */
+      --gap: 12px;
+      --pad: 12px;
+
+      /* リモコンの高さ（iPadのSafariバーを考慮して縮む） */
+      --remoteH: clamp(70px, 12svh, 110px);
+      --slotH:  clamp(44px, 7svh, 54px);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      overflow:hidden;
+      font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      background: radial-gradient(1200px 700px at 70% 10%, rgba(108,242,255,.12), transparent 60%),
+                  radial-gradient(900px 600px at 20% 90%, rgba(118,255,157,.10), transparent 55%),
+                  var(--bg);
+      color: var(--text);
+      padding:
+        env(safe-area-inset-top)
+        env(safe-area-inset-right)
+        env(safe-area-inset-bottom)
+        env(safe-area-inset-left);
+    }
+    body:before{
+      content:""; position:fixed; inset:0; pointer-events:none; opacity:.55;
+      background-image:
+        radial-gradient(2px 2px at 12% 20%, rgba(255,255,255,.7) 45%, transparent 46%),
+        radial-gradient(1px 1px at 38% 55%, rgba(255,255,255,.6) 45%, transparent 46%),
+        radial-gradient(1px 1px at 71% 22%, rgba(255,255,255,.5) 45%, transparent 46%),
+        radial-gradient(2px 2px at 82% 68%, rgba(255,255,255,.65) 45%, transparent 46%),
+        radial-gradient(1px 1px at 60% 82%, rgba(255,255,255,.55) 45%, transparent 46%),
+        radial-gradient(1px 1px at 8% 78%, rgba(255,255,255,.45) 45%, transparent 46%);
+    }
+
+    /* ✅ iPad Safariの100vh問題対策：100dvh / 100svhを使う */
+    .app{
+      display:grid;
+      grid-template-columns: 250px minmax(0, 1fr) 290px;
+      grid-template-rows: 1fr var(--remoteH);
+      gap: var(--gap);
+      height: 100dvh;
+      height: 100svh; /* iOS対策 */
+      padding: var(--pad);
+      min-height: 0;
+    }
+
+    .pill{
+      background: rgba(18,26,46,.85);
+      border:1px solid rgba(27,42,74,.75);
+      border-radius:999px; padding:6px 10px;
+      display:flex; gap:8px; align-items:center;
+      color: var(--muted); font-size:12px;
+    }
+    .pill b{color:var(--text); font-weight:900}
+    .pill .good{color:var(--good); font-weight:900}
+    .pill .warn{color:var(--warn); font-weight:900}
+    .pill .accent{color:var(--accent); font-weight:900}
+
+    /* ✅ 左：タイトル＋コマンド */
+    .left{
+      grid-column: 1 / 2;
+      grid-row: 1 / 3;
+      background: linear-gradient(180deg, rgba(13,18,32,.95), rgba(10,15,27,.85));
+      border: 1px solid rgba(27,42,74,.7);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px;
+      overflow:hidden;
+      display:flex; flex-direction:column; gap: 10px;
+      min-height: 0;
+    }
+    .leftTitle{
+      border-radius: 16px;
+      padding: 10px 10px;
+      background: linear-gradient(180deg, rgba(18,26,46,.95), rgba(12,18,34,.9));
+      border: 1px solid rgba(27,42,74,.7);
+      box-shadow:
+        0 18px 40px rgba(0,0,0,.35),
+        inset 0 1px 0 rgba(255,255,255,.08),
+        inset 0 -10px 18px rgba(0,0,0,.25);
+    }
+    .leftTitle h1{margin:0; font-size:18px}
+    .leftTitle .sub{margin:2px 0 0; font-size:12px; color:var(--muted)}
+
+    .panelTitle{display:flex; justify-content:space-between; align-items:center}
+    .panelTitle h2{margin:0; font-size:14px}
+    .panelTitle .hint{font-size:11px; color:var(--muted)}
+    .cmdList{overflow:auto; padding-right:6px; display:grid; gap:10px; min-height:0}
+
+    /* ✅ コマンドを3Dっぽく */
+    .cmdBtn{
+      user-select:none; cursor:pointer;
+      border-radius: 16px;
+      padding: 10px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background: linear-gradient(180deg, rgba(25,36,64,.95), rgba(12,18,34,.92));
+      border: 1px solid rgba(108,242,255,.18);
+      box-shadow:
+        0 14px 26px rgba(0,0,0,.35),
+        inset 0 1px 0 rgba(255,255,255,.10),
+        inset 0 -10px 18px rgba(0,0,0,.35);
+      transition: transform .06s ease, border-color .12s ease, box-shadow .12s ease;
+    }
+    .cmdBtn:hover{
+      border-color: rgba(108,242,255,.55);
+      box-shadow:
+        0 16px 30px rgba(0,0,0,.38),
+        inset 0 1px 0 rgba(255,255,255,.14),
+        inset 0 -12px 20px rgba(0,0,0,.36);
+    }
+    .cmdBtn:active{ transform: translateY(1px) scale(.995); }
+    .cmdIcon{
+      width:42px; height:42px; border-radius:14px;
+      display:grid; place-items:center;
+      background: linear-gradient(180deg, rgba(108,242,255,.20), rgba(12,18,34,.65));
+      border: 1px solid rgba(108,242,255,.25);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.10), inset 0 -10px 14px rgba(0,0,0,.35);
+      font-size: 22px;
+    }
+    .cmdInfo{flex:1}
+    .cmdInfo .name{font-weight:900; font-size:13px}
+    .cmdInfo .desc{color:var(--muted); font-size:11px; margin-top:2px}
+    .cmdAdd{color:var(--accent); font-weight:900; font-size:18px}
+
+    /* ✅ 中央：マップ（上段いっぱい） */
+    .mapArea{
+      grid-column: 2 / 3;
+      grid-row: 1 / 2;
+      min-height:0;
+      display:flex;
+      overflow:hidden;
+    }
+    .mapCard{
+      flex: 1 1 auto;
+      min-height:0;
+      background: linear-gradient(180deg, rgba(13,18,32,.95), rgba(10,15,27,.85));
+      border: 1px solid rgba(27,42,74,.7);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px;
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+      position:relative;
+    }
+
+    /* ✅ ボタン：マップ右上（iPadで見切れないよう常に確保） */
+    .mapTop{
+      flex: 0 0 auto;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap: 10px;
+      padding: 2px 2px 10px;
+      min-height: 54px; /* これが効いて「スタートが隠れる」を防ぐ */
+    }
+    .controls{
+      margin-left:auto;
+      display:flex;
+      gap: 8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    button{
+      cursor:pointer;
+      border-radius: 16px;
+      border: 1px solid rgba(108,242,255,.16);
+      background: linear-gradient(180deg, rgba(25,36,64,.95), rgba(12,18,34,.92));
+      color: var(--text);
+      padding: 10px 12px;
+      font-weight: 900;
+      font-size: 12px;
+      min-width: 112px;
+      box-shadow:
+        0 14px 26px rgba(0,0,0,.35),
+        inset 0 1px 0 rgba(255,255,255,.10),
+        inset 0 -10px 18px rgba(0,0,0,.35);
+      transition: transform .06s ease, border-color .12s ease;
+      white-space:nowrap;
+    }
+    button:hover{ border-color: rgba(108,242,255,.65); }
+    button:active{ transform: translateY(1px) scale(.995); }
+    button.primary{
+      background: linear-gradient(180deg, rgba(108,242,255,.28), rgba(12,18,34,.92));
+      border-color: rgba(108,242,255,.55);
+    }
+    button.danger{
+      background: linear-gradient(180deg, rgba(255,108,139,.18), rgba(12,18,34,.92));
+      border-color: rgba(255,108,139,.55);
+    }
+    button:disabled{opacity:.5; cursor:not-allowed}
+
+    .canvasWrap{
+      flex: 1 1 auto;
+      min-height:0;
+      border-radius: 14px;
+      border: 1px solid rgba(27,42,74,.7);
+      background: rgba(6,7,11,.25);
+      overflow:hidden;
+    }
+    canvas{width:100%; height:100%; display:block}
+
+    /* ✅ 右：ステータス */
+    .status{
+      grid-column: 3 / 4;
+      grid-row: 1 / 2;
+      background: linear-gradient(180deg, rgba(13,18,32,.95), rgba(10,15,27,.85));
+      border: 1px solid rgba(27,42,74,.7);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px;
+      overflow:hidden;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+    .status h2{margin:0; font-size:14px}
+    .statusGrid{display:grid; gap:10px}
+    .statusNote{margin-top:auto; color:var(--muted); font-size:11px; line-height:1.5}
+
+    /* ✅ 下：リモコン（iPadで「はみ出す」対策：横スクロールにする） */
+    .remote{
+      grid-column: 2 / 4;
+      grid-row: 2 / 3;
+      background: linear-gradient(180deg, rgba(13,18,32,.95), rgba(10,15,27,.85));
+      border: 1px solid rgba(27,42,74,.7);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 6px 10px 8px 10px;
+      display:flex; flex-direction:column; gap:6px;
+      overflow:hidden;
+      min-height:0;
+    }
+    .remoteTop{display:flex; justify-content:space-between; gap:10px; align-items:center}
+    .remoteTop .label{font-weight:900; font-size:13px}
+    .remoteTop .small{color:var(--muted); font-size:11px}
+
+    /* iPadで横幅が足りない時も崩れない：横スクロール */
+    .slots{
+      display:flex;
+      gap: 8px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      padding-bottom: 2px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .slot{
+      flex: 0 0 auto;
+      width: clamp(54px, 8vw, 86px);
+      height: var(--slotH);
+      user-select:none;
+      border-radius: 14px;
+      display:grid; place-items:center;
+      font-weight:900; font-size:18px;
+      position:relative;
+      color: rgba(233,240,255,.75);
+
+      /* 3Dっぽく */
+      background: linear-gradient(180deg, rgba(25,36,64,.85), rgba(12,18,34,.92));
+      border: 1px dashed rgba(108,242,255,.16);
+      box-shadow:
+        0 14px 26px rgba(0,0,0,.32),
+        inset 0 1px 0 rgba(255,255,255,.10),
+        inset 0 -10px 18px rgba(0,0,0,.35);
+    }
+    .slot.filled{
+      border-style:solid;
+      background: linear-gradient(180deg, rgba(108,242,255,.18), rgba(12,18,34,.92));
+      border-color: rgba(108,242,255,.35);
+    }
+    .slot .idx{position:absolute; left:8px; top:6px; font-size:10px; color: rgba(159,179,217,.8); font-weight:900;}
+    .slot .x{
+      position:absolute; right:6px; top:6px;
+      font-size:12px; color: rgba(255,108,139,.95);
+      font-weight:900; display:none; cursor:pointer;
+      padding:2px 6px; border-radius:10px;
+      background: rgba(255,108,139,.12);
+      border: 1px solid rgba(255,108,139,.25);
+    }
+    .slot.filled .x{display:block}
+    .slot.active{outline:2px solid rgba(118,255,157,.8); box-shadow:0 0 0 6px rgba(118,255,157,.10);}
+
+    /* ✅ クリア画面（文字を大きく） */
+    .overlay{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,.62);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 8px;
+      z-index: 20;
+    }
+    .overlay.show{display:flex}
+    .modal{
+      width:min(1100px, 98vw);
+      background: linear-gradient(180deg, rgba(13,18,32,.97), rgba(10,15,27,.92));
+      border: 1px solid rgba(108,242,255,.35);
+      border-radius: 22px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.65);
+      padding: 14px;
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .modal h3{
+      margin:0;
+      font-size: clamp(26px, 4vw, 44px);
+      letter-spacing: .06em;
+      text-shadow: 0 10px 22px rgba(0,0,0,.55);
+    }
+    .modal p{margin:0; color:var(--muted); font-size:12px; line-height:1.5}
+    .modal .anim{
+      height: 62vh;
+      border-radius: 16px;
+      border: 1px solid rgba(27,42,74,.7);
+      background:
+        radial-gradient(800px 380px at 50% 120%, rgba(108,242,255,.18), transparent 55%),
+        radial-gradient(700px 320px at 70% 10%, rgba(118,255,157,.12), transparent 60%),
+        rgba(6,7,11,.35);
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden;
+      position:relative;
+    }
+    .nextSpaceImg{
+      max-height: 58vh;
+      max-width: 96vw;
+      border-radius:14px;
+      border:1px solid rgba(108,242,255,.25);
+      box-shadow: 0 10px 40px rgba(0,0,0,.35);
+    }
+
+    /* ✅ つぎへ動画（iOS再生用） */
+    .nextVideo{
+      width: min(980px, 96vw);
+      max-height: 58vh;
+      border-radius:14px;
+      border:1px solid rgba(108,242,255,.25);
+      box-shadow: 0 10px 40px rgba(0,0,0,.35);
+      background:#000;
+      display:none;
+    }
+    .nextVideo.show{display:block}
+
+    /* ✅ 起動画面 */
+    .startOverlay{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,.72);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 10px;
+      z-index: 30;
+    }
+    .startCard{
+      width:min(980px, 96vw);
+      background: linear-gradient(180deg, rgba(13,18,32,.97), rgba(10,15,27,.92));
+      border: 1px solid rgba(108,242,255,.35);
+      border-radius: 22px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.65);
+      padding: 14px;
+      display:flex; flex-direction:column; gap:12px;
+      align-items:center;
+    }
+    .startImg{
+      width:100%;
+      max-height: 60vh;
+      object-fit: contain;
+      border-radius: 16px;
+      border: 1px solid rgba(27,42,74,.7);
+      background: rgba(6,7,11,.35);
+    }
+
+    /* ✅ iPad横(1024前後)でさらに安定させる */
+    @media (max-width: 1100px){
+      :root{ --remoteH: clamp(66px, 11svh, 100px); }
+      .app{ grid-template-columns: 240px minmax(0, 1fr) 280px; }
+      button{ min-width: 104px; padding: 10px 10px; }
+    }
+
+    @media (max-width: 980px){
+      /* 縦持ち用 */
+      body{overflow:auto}
+      .app{
+        height:auto;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto;
+      }
+      .left{grid-column:1; grid-row:auto}
+      .mapArea{grid-column:1; grid-row:auto; height: 62vh;}
+      .status{grid-column:1; grid-row:auto}
+      .remote{grid-column:1; grid-row:auto}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="left">
+      <div class="leftTitle">
+        <h1>バズのスペースアドベンチャー</h1>
+        <div class="sub">コマンドを ならべて、バズを ロケットへ！</div>
+      </div>
+
+      <div class="panelTitle">
+        <h2>コマンド</h2>
+        <div class="hint">タップで いれる</div>
+      </div>
+      <div class="cmdList" id="cmdList"></div>
+
+      <div style="margin-top:auto; font-size:11px; color:var(--muted); line-height:1.4;">
+        あそびかた：<br/>
+        ・コマンドを ならべて <b>スタート</b><br/>
+        ・テープを とって、クルーに あうと たかい！<br/>
+        ・ロケットに ついたら クリア！
+      </div>
+    </aside>
+
+    <section class="mapArea">
+      <div class="mapCard">
+        <div class="mapTop">
+          <div class="controls">
+            <button class="primary" id="btnStart">スタート</button>
+            <button id="btnReset">リセット</button>
+            <button class="danger" id="btnClear">コマンド ぜんぶけす</button>
+          </div>
+        </div>
+        <div class="canvasWrap">
+          <canvas id="gameCanvas"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <aside class="status">
+      <h2>ステータス</h2>
+      <div class="statusGrid">
+        <div class="pill">ステージ <b id="stageText">1</b> / <span class="accent" id="stageMaxText">4</span></div>
+        <div class="pill">マップ <b id="sizeText">4×4</b></div>
+        <div class="pill">スコア <b class="good" id="scoreText">0</b></div>
+        <div class="pill">テープ <b class="warn" id="tapeText">0</b></div>
+        <div class="pill">クルー <b class="accent" id="crewText">0</b></div>
+      </div>
+      <div class="statusNote">
+        ※ しっぱいしたら じどうで もどるよ<br/>
+        ※ スタートすると コマンドは きえるよ
+      </div>
+    </aside>
+
+    <section class="remote">
+      <div class="remoteTop">
+        <div class="label">リモコン</div>
+        <div class="small">スロットをタップで けせる（横スクロールOK）</div>
+      </div>
+      <div class="slots" id="slots"></div>
+    </section>
+  </div>
+
+  <!-- 起動画面 -->
+  <div class="startOverlay" id="startOverlay">
+    <div class="startCard">
+      <img class="startImg" id="startImg" alt="はじめる" />
+      <button class="primary" id="btnBegin" style="min-width:180px;">はじめる</button>
+    </div>
+  </div>
+
+  <!-- クリア画面 -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h3>クリア！</h3>
+      <p>バズが ロケットに のって、つぎの うちゅうへ！</p>
+      <div class="anim">
+        <img id="nextSpaceImg" class="nextSpaceImg" alt="つぎの うちゅう" />
+        <video id="nextVideo" class="nextVideo" playsinline webkit-playsinline></video>
+      </div>
+      <div style="display:flex; justify-content:flex-end;">
+        <button id="btnNext" class="primary">つぎへ</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  /***********************
+   * 画像
+   ***********************/
+  const IMG = {
+    buzzUp:   "バズ上.png",
+    buzzRight:"バズ右.png",
+    buzzDown: "バズ下.png",
+    buzzLeft: "バズ左.png",
+
+    crew1: "猫バス.png",
+    crew2: "トトロ.png",
+    crew3: "メイ.png",            // ✅ 追加
+    rocket: "ロケット.png",
+    tape: "スーパーシールドテープ.png",
+    nextSpace: "バズ宇宙へ.png",
+
+    startImg: "はじめる.png"       // ✅ 起動画面
+  };
+
+  /***********************
+   * 音・動画
+   ***********************/
+  const SND = {
+    goalSfx: "ゴール.mp3",
+    itemSfx: "アイテム取得.mp3",
+    cmdSfx:  "コマンド選択.mp3",
+    walkSfx: "歩行音.mp3",         // ✅ 追加
+    goalBgm: "ゴールBGM.mp3",
+    playBgm: "プレイ中BGM.mp3",
+
+    beginBgm: "はじめるBGM.mp3",   // ✅ 起動画面BGM
+    beginBtn: "はじめるボタン.mp3",// ✅ はじめる押下
+    nextSfx:  "つぎへ.mp3"         // ✅ つぎへ音
+  };
+  const MOV = {
+    nextMp4: "つぎへ.mp4"          // ✅ つぎへ動画
+  };
+
+  let audioUnlocked = false;
+
+  // BGM
+  const playBGM  = new Audio(SND.playBgm);
+  playBGM.loop = true;  playBGM.volume = 0.35;
+
+  const goalBGM  = new Audio(SND.goalBgm);
+  goalBGM.loop = true;  goalBGM.volume = 0.45;
+
+  const beginBGM = new Audio(SND.beginBgm);
+  beginBGM.loop = true; beginBGM.volume = 0.45;
+
+  function unlockAudio(){
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    // iOS対策：一度 play して即停止
+    [playBGM, goalBGM, beginBGM].forEach(a=>{
+      a.play().then(()=>{ a.pause(); a.currentTime=0; }).catch(()=>{});
+    });
+  }
+
+  function playSfx(src, volume=0.9){
+    if (!audioUnlocked) return;
+    const a = new Audio(src);
+    a.volume = volume;
+    a.play().catch(()=>{});
+  }
+
+  function startPlayBGM(){
+    if (!audioUnlocked) return;
+    try { goalBGM.pause(); goalBGM.currentTime = 0; } catch(_){}
+    try { beginBGM.pause(); beginBGM.currentTime = 0; } catch(_){}
+    if (!playBGM.paused) return;
+    playBGM.currentTime = 0;
+    playBGM.play().catch(()=>{});
+  }
+  function stopPlayBGM(){ try { playBGM.pause(); } catch(_){} }
+
+  function startGoalBGM(){
+    if (!audioUnlocked) return;
+    try { playBGM.pause(); playBGM.currentTime = 0; } catch(_){}
+    try { beginBGM.pause(); beginBGM.currentTime = 0; } catch(_){}
+    goalBGM.currentTime = 0;
+    goalBGM.play().catch(()=>{});
+  }
+  function stopGoalBGM(){ try { goalBGM.pause(); } catch(_){} }
+
+  function startBeginBGM(){
+    // 起動画面はタップ前は鳴らないので、押下後に鳴らす（iOS仕様）
+    if (!audioUnlocked) return;
+    try { playBGM.pause(); playBGM.currentTime = 0; } catch(_){}
+    try { goalBGM.pause(); goalBGM.currentTime = 0; } catch(_){}
+    if (!beginBGM.paused) return;
+    beginBGM.currentTime = 0;
+    beginBGM.play().catch(()=>{});
+  }
+  function stopBeginBGM(){ try { beginBGM.pause(); } catch(_){} }
+
+  /***********************
+   * 画像ロード
+   ***********************/
+  function loadImg(src){
+    const img = new Image();
+    let ok = false;
+    const ready = new Promise((resolve) => {
+      img.onload = () => { ok = true; resolve(true); };
+      img.onerror = () => { ok = false; resolve(false); };
+    });
+    img.src = src;
+    return { img, ready, ok: () => ok };
+  }
+
+  const I = {
+    buzzUp: loadImg(IMG.buzzUp),
+    buzzRight: loadImg(IMG.buzzRight),
+    buzzDown: loadImg(IMG.buzzDown),
+    buzzLeft: loadImg(IMG.buzzLeft),
+    crew1: loadImg(IMG.crew1),
+    crew2: loadImg(IMG.crew2),
+    crew3: loadImg(IMG.crew3),
+    rocket: loadImg(IMG.rocket),
+    tape: loadImg(IMG.tape),
+    nextSpace: loadImg(IMG.nextSpace),
+    startImg: loadImg(IMG.startImg),
+  };
+
+  function buzzImgForDir(dir){
+    if (dir===0) return I.buzzUp;
+    if (dir===1) return I.buzzRight;
+    if (dir===2) return I.buzzDown;
+    return I.buzzLeft;
+  }
+
+  /***********************
+   * ゲーム設定
+   ***********************/
+  const stageSizes = [4,6,8,10];
+  let stageIndex = 0;
+
+  const COMMANDS = [
+    { id:"F", name:"まえへ", icon:"⬆️", desc:"1マスすすむ" },
+    { id:"U", name:"ふりかえり", icon:"🔄", desc:"うしろをむく" }, // 180度回転だけ
+    { id:"L", name:"ひだり", icon:"↩️", desc:"ひだりにむく" },
+    { id:"R", name:"みぎ",   icon:"↪️", desc:"みぎにむく" },
+  ];
+
+  const MAX_SLOTS = 10;
+
+  const state = {
+    size: stageSizes[stageIndex],
+    running:false,
+    tickMs: 420,
+    stepPtr:0,
+    score:0, tapeGot:0, crewMet:0,
+    start:{x:0,y:0,dir:0},
+    buzz:{x:0,y:0,dir:0},
+    goal:{x:0,y:0},
+    crews:[],          // ✅ 3人に
+    tapes:new Set(),
+    slots: new Array(MAX_SLOTS).fill(null),
+    runQueue: [],
+    message:""
+  };
+
+  /***********************
+   * DOM
+   ***********************/
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+
+  const stageText = document.getElementById("stageText");
+  const stageMaxText = document.getElementById("stageMaxText");
+  const sizeText = document.getElementById("sizeText");
+  const scoreText = document.getElementById("scoreText");
+  const tapeText = document.getElementById("tapeText");
+  const crewText = document.getElementById("crewText");
+
+  const cmdList = document.getElementById("cmdList");
+  const slotsEl = document.getElementById("slots");
+
+  const btnStart = document.getElementById("btnStart");
+  const btnReset = document.getElementById("btnReset");
+  const btnClear = document.getElementById("btnClear");
+
+  const overlay = document.getElementById("overlay");
+  const btnNext = document.getElementById("btnNext");
+  const nextSpaceImgEl = document.getElementById("nextSpaceImg");
+  const nextVideoEl = document.getElementById("nextVideo");
+
+  const startOverlay = document.getElementById("startOverlay");
+  const btnBegin = document.getElementById("btnBegin");
+  const startImgEl = document.getElementById("startImg");
+
+  let started = false;
+
+  Promise.all([
+    I.buzzUp.ready, I.buzzRight.ready, I.buzzDown.ready, I.buzzLeft.ready,
+    I.crew1.ready, I.crew2.ready, I.crew3.ready,
+    I.rocket.ready, I.tape.ready, I.nextSpace.ready, I.startImg.ready
+  ]).then(() => {
+    nextSpaceImgEl.src = IMG.nextSpace;
+    startImgEl.src = IMG.startImg;
+    fitCanvas();
+    draw();
+  });
+
+  /***********************
+   * UI
+   ***********************/
+  function iconForCmd(id){ return (COMMANDS.find(x=>x.id===id) || {}).icon || "?"; }
+
+  function buildCmdList(){
+    cmdList.innerHTML = "";
+    COMMANDS.forEach(c => {
+      const div = document.createElement("div");
+      div.className = "cmdBtn";
+      div.innerHTML = `
+        <div class="cmdIcon">${c.icon}</div>
+        <div class="cmdInfo">
+          <div class="name">${c.name}</div>
+          <div class="desc">${c.desc}</div>
+        </div>
+        <div class="cmdAdd">＋</div>
+      `;
+      div.addEventListener("click", () => {
+        if (!started) return;            // 起動画面中は無効
+        unlockAudio();
+        startPlayBGM();
+        addCommandToSlots(c.id);
+      });
+      cmdList.appendChild(div);
+    });
+  }
+
+  function buildSlots(){
+    slotsEl.innerHTML = "";
+    for (let i=0;i<MAX_SLOTS;i++){
+      const s = document.createElement("div");
+      s.className = "slot";
+      s.innerHTML = `<div class="idx">${i+1}</div><div class="val"></div><div class="x">×</div>`;
+      s.addEventListener("click", () => {
+        if (!started) return;
+        if (state.running) return;
+        if (state.slots[i]){ state.slots[i] = null; renderSlots(); draw(); }
+      });
+      s.querySelector(".x").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!started) return;
+        if (state.running) return;
+        state.slots[i] = null; renderSlots(); draw();
+      });
+      slotsEl.appendChild(s);
+    }
+    renderSlots();
+  }
+
+  function renderSlots(){
+    for (let i=0;i<MAX_SLOTS;i++){
+      const el = slotsEl.children[i];
+      const v = state.slots[i];
+      el.classList.toggle("filled", !!v);
+      el.classList.toggle("active", state.running && i === state.stepPtr);
+      el.querySelector(".val").textContent = v ? iconForCmd(v) : "";
+    }
+  }
+
+  function addCommandToSlots(cmdId){
+    if (state.running) return;
+    const idx = state.slots.findIndex(v => v === null);
+    if (idx === -1) return;
+    state.slots[idx] = cmdId;
+    renderSlots(); draw();
+    playSfx(SND.cmdSfx, 0.9);
+  }
+
+  function clearCommands(){
+    if (state.running) return;
+    state.slots = new Array(MAX_SLOTS).fill(null);
+    state.stepPtr = 0;
+    state.message = "コマンド ぜんぶ けしたよ！";
+    renderSlots(); draw();
+  }
+
+  /***********************
+   * ステージ生成
+   ***********************/
+  function randInt(n){ return Math.floor(Math.random()*n); }
+  function key(x,y){ return `${x},${y}`; }
+  function manhattan(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y); }
+
+  function validDirsForStart(x,y){
+    const ds = [];
+    if (y-1 >= 0) ds.push(0);
+    if (x+1 < state.size) ds.push(1);
+    if (y+1 < state.size) ds.push(2);
+    if (x-1 >= 0) ds.push(3);
+    return ds;
+  }
+
+  function pickStartGoalFar(){
+    const minDist = Math.max(3, Math.floor(state.size * 1.1));
+    let s, g, guard=0;
+    do{
+      const sx = randInt(state.size);
+      const sy = randInt(state.size);
+      const dirs = validDirsForStart(sx, sy);
+      const dir = dirs[randInt(dirs.length)];
+      s = {x:sx, y:sy, dir};
+      g = {x:randInt(state.size), y:randInt(state.size)};
+      guard++;
+      if (guard > 1500) break;
+    } while ((s.x===g.x && s.y===g.y) || manhattan(s,g) < minDist);
+    return {s, g};
+  }
+
+  function randomEmptyCell(occ){
+    let guard=0;
+    while(true){
+      const c = {x:randInt(state.size), y:randInt(state.size)};
+      const k = key(c.x,c.y);
+      if (!occ.has(k)) return c;
+      guard++; if (guard>3000) return c;
+    }
+  }
+
+  let timer=null;
+
+  function stopRun(){
+    state.running=false;
+    btnStart.disabled=false;
+    btnReset.disabled=false;
+    btnClear.disabled=false;
+    if (timer){ clearInterval(timer); timer=null; }
+  }
+
+  function updateHUD(){
+    stageText.textContent = String(stageIndex+1);
+    stageMaxText.textContent = String(stageSizes.length);
+    sizeText.textContent = `${state.size}×${state.size}`;
+    scoreText.textContent = String(state.score);
+    tapeText.textContent = String(state.tapeGot);
+    crewText.textContent = String(state.crewMet);
+  }
+
+  function resetStage(){
+    stopRun();
+    stopGoalBGM();
+    startPlayBGM();
+
+    state.size = stageSizes[stageIndex];
+    state.stepPtr = 0;
+    state.message = "";
+
+    const {s, g} = pickStartGoalFar();
+    state.start = {x:s.x, y:s.y, dir:s.dir};
+    state.buzz  = {x:s.x, y:s.y, dir:s.dir};
+    state.goal  = {x:g.x, y:g.y};
+
+    const occ = new Set([ key(state.start.x,state.start.y), key(state.goal.x,state.goal.y) ]);
+
+    // ✅ クルー 3人（猫バス/トトロ/メイ）
+    state.crews = [];
+    for (let i=0;i<3;i++){
+      const c = randomEmptyCell(occ);
+      state.crews.push({x:c.x, y:c.y, met:false, idx:i});
+      occ.add(key(c.x,c.y));
+    }
+
+    // テープ1つ
+    state.tapes = new Set();
+    const t = randomEmptyCell(occ);
+    state.tapes.add(key(t.x,t.y));
+
+    state.tapeGot = 0;
+    state.crewMet = 0;
+
+    state.slots = new Array(MAX_SLOTS).fill(null);
+    state.runQueue = [];
+
+    updateHUD();
+    renderSlots();
+    draw();
+  }
+
+  function resetAllToStart(){
+    stopRun();
+    unlockAudio();
+    startPlayBGM();
+
+    state.buzz = {x: state.start.x, y: state.start.y, dir: state.start.dir};
+    state.stepPtr = 0;
+    state.message = "リセット！";
+
+    state.slots = new Array(MAX_SLOTS).fill(null);
+    state.runQueue = [];
+
+    renderSlots();
+    draw();
+  }
+
+  /***********************
+   * 描画
+   ***********************/
+  function fitCanvas(){
+    const wrap = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(wrap.width * dpr));
+    canvas.height = Math.max(1, Math.floor(wrap.height * dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function boardRect(){
+    const w = canvas.width / (window.devicePixelRatio||1);
+    const h = canvas.height / (window.devicePixelRatio||1);
+
+    const pad = 18;
+    const topPad = 18;
+
+    return {
+      bx: pad,
+      by: topPad,
+      bw: w - pad*2,
+      bh: h - pad - topPad,
+      w, h
+    };
+  }
+
+  function drawImageContain(img, x, y, w, h, scale=0.92){
+    const iw = img.width, ih = img.height;
+    if (!iw || !ih) return false;
+    const s = Math.min(w/iw, h/ih) * scale;
+    const dw = iw * s, dh = ih * s;
+    const dx = x + (w - dw)/2;
+    const dy = y + (h - dh)/2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    return true;
+  }
+
+  function draw(){
+    const {bx,by,bw,bh,w,h} = boardRect();
+    ctx.clearRect(0,0,w,h);
+
+    const n = state.size;
+    const cellW = bw / n;
+    const cellH = bh / n;
+
+    for (let yy=0;yy<n;yy++){
+      for (let xx=0;xx<n;xx++){
+        const x0 = bx + xx*cellW;
+        const y0 = by + yy*cellH;
+        ctx.fillStyle = ((xx+yy)%2===0) ? "rgba(18,26,46,0.78)" : "rgba(15,22,40,0.78)";
+        ctx.fillRect(x0, y0, cellW, cellH);
+        ctx.strokeStyle = "rgba(27,42,74,0.55)";
+        ctx.strokeRect(x0, y0, cellW, cellH);
+
+        if (state.tapes.has(key(xx,yy))){
+          ctx.save();
+          ctx.fillStyle = "rgba(255,211,108,0.08)";
+          ctx.fillRect(x0,y0,cellW,cellH);
+          if (I.tape.ok()) drawImageContain(I.tape.img, x0, y0, cellW, cellH, 0.92);
+          ctx.restore();
+        }
+      }
+    }
+
+    // ゴール
+    const gx = bx + state.goal.x*cellW;
+    const gy = by + state.goal.y*cellH;
+    ctx.save();
+    ctx.fillStyle = "rgba(108,242,255,0.06)";
+    ctx.fillRect(gx,gy,cellW,cellH);
+    if (I.rocket.ok()) drawImageContain(I.rocket.img, gx, gy, cellW, cellH, 0.92);
+
+    ctx.font = `${Math.floor(Math.min(cellW,cellH)*0.18)}px system-ui`;
+    ctx.fillStyle = "rgba(233,240,255,0.95)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("ゴール", gx + cellW/2, gy + cellH*0.03);
+    ctx.restore();
+
+    // スタート（開始位置固定）
+    const sx = bx + state.start.x*cellW;
+    const sy = by + state.start.y*cellH;
+    ctx.save();
+    ctx.fillStyle = "rgba(118,255,157,0.05)";
+    ctx.fillRect(sx,sy,cellW,cellH);
+    ctx.font = `${Math.floor(Math.min(cellW,cellH)*0.18)}px system-ui`;
+    ctx.fillStyle = "rgba(233,240,255,0.95)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText("スタート", sx + cellW/2, sy + cellH*0.03);
+    ctx.restore();
+
+    // クルー（固定/3人）
+    state.crews.forEach((c)=>{
+      if (c.met) return;
+      const x0 = bx + c.x*cellW, y0 = by + c.y*cellH;
+      ctx.save();
+      ctx.fillStyle = "rgba(118,255,157,0.05)";
+      ctx.fillRect(x0,y0,cellW,cellH);
+      const src = (c.idx===0) ? I.crew1 : (c.idx===1 ? I.crew2 : I.crew3);
+      if (src.ok()) drawImageContain(src.img, x0, y0, cellW, cellH, 0.92);
+      ctx.restore();
+    });
+
+    // バズ（向き別画像）
+    const px = bx + state.buzz.x*cellW;
+    const py = by + state.buzz.y*cellH;
+    ctx.save();
+    ctx.fillStyle = "rgba(108,242,255,0.04)";
+    ctx.fillRect(px,py,cellW,cellH);
+    const bi = buzzImgForDir(state.buzz.dir);
+    if (bi.ok()) drawImageContain(bi.img, px, py, cellW, cellH, 0.92);
+    ctx.restore();
+
+    if (state.message){
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, h-46, w, 46);
+      ctx.fillStyle = "rgba(233,240,255,0.92)";
+      ctx.font = "16px system-ui";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(state.message, 14, h-18);
+      ctx.restore();
+    }
+  }
+
+  /***********************
+   * 実行ロジック
+   ***********************/
+  function dirVec(dir){
+    if (dir===0) return {dx:0,dy:-1};
+    if (dir===1) return {dx:1,dy:0};
+    if (dir===2) return {dx:0,dy:1};
+    return {dx:-1,dy:0};
+  }
+  function samePos(a,b){ return a.x===b.x && a.y===b.y; }
+
+  function checkPickups(){
+    const k = key(state.buzz.x, state.buzz.y);
+    if (state.tapes.has(k)){
+      state.tapes.delete(k);
+      state.tapeGot++;
+      state.score += 80;
+      state.message = "テープ みっけ！";
+      playSfx(SND.itemSfx, 0.95);
+    }
+    state.crews.forEach(c=>{
+      if (c.met) return;
+      if (c.x===state.buzz.x && c.y===state.buzz.y){
+        c.met=true;
+        state.crewMet++;
+        state.score += 120;
+        state.message = "クルーに あえた！";
+        playSfx(SND.itemSfx, 0.9);
+      }
+    });
+    updateHUD();
+  }
+
+  function failAndAutoReset(msg){
+    stopRun();
+    playSfx(SND.cmdSfx, 0.35);
+    state.buzz = {x: state.start.x, y: state.start.y, dir: state.start.dir};
+    state.stepPtr = 0;
+    state.message = msg || "しっぱい！ もどるよ。";
+    draw();
+  }
+
+  function startRun(){
+    if (!started) return;
+    unlockAudio();
+    startPlayBGM();
+
+    state.runQueue = state.slots.filter(Boolean);
+    if (state.runQueue.length === 0){
+      state.message="まず ならべてね。";
+      draw();
+      return;
+    }
+
+    // ✅ スタートしたらコマンド消す
+    state.slots = new Array(MAX_SLOTS).fill(null);
+    renderSlots();
+
+    state.running=true;
+    state.stepPtr=0;
+    state.message="";
+
+    btnStart.disabled=true;
+    btnReset.disabled=true;
+    btnClear.disabled=true;
+
+    draw();
+    timer = setInterval(stepOnce, state.tickMs);
+  }
+
+  function stepOnce(){
+    const cmd = state.runQueue[state.stepPtr];
+    if (!cmd){
+      stopRun();
+      state.message="コマンド おわり。";
+      draw();
+      return;
+    }
+
+    if (cmd==="L") state.buzz.dir = (state.buzz.dir + 3) % 4;
+    if (cmd==="R") state.buzz.dir = (state.buzz.dir + 1) % 4;
+    if (cmd==="U") state.buzz.dir = (state.buzz.dir + 2) % 4;
+
+    if (cmd==="F"){
+      const v = dirVec(state.buzz.dir);
+      const nx = state.buzz.x + v.dx;
+      const ny = state.buzz.y + v.dy;
+      if (nx<0||nx>=state.size||ny<0||ny>=state.size){
+        failAndAutoReset("そとだよ！ もどるね。");
+        return;
+      }
+      state.buzz.x = nx; state.buzz.y = ny;
+      playSfx(SND.walkSfx, 0.35); // ✅ 歩行音
+    }
+
+    checkPickups();
+
+    if (samePos(state.buzz, state.goal)){
+      stopRun();
+      state.score += 200;
+      updateHUD();
+
+      playSfx(SND.goalSfx, 1.0);
+      stopPlayBGM();
+      startGoalBGM();
+
+      // クリア画面：画像表示に戻す
+      nextVideoEl.pause(); nextVideoEl.removeAttribute("src"); nextVideoEl.load();
+      nextVideoEl.classList.remove("show");
+      nextSpaceImgEl.style.display = "block";
+
+      overlay.classList.add("show");
+      return;
+    }
+
+    state.stepPtr++;
+    draw();
+  }
+
+  async function playNextSequence(){
+    // ✅ iOSは「ボタン押下＝ユーザー操作」中にplayを開始する必要がある
+    unlockAudio();
+
+    // まず音
+    playSfx(SND.nextSfx, 1.0);
+
+    // BGM止める（動画の音が聞こえるように）
+    stopGoalBGM();
+    stopPlayBGM();
+
+    // 動画を表示＆再生
+    nextSpaceImgEl.style.display = "none";
+    nextVideoEl.classList.add("show");
+    nextVideoEl.src = MOV.nextMp4;
+    nextVideoEl.currentTime = 0;
+    nextVideoEl.muted = false;
+    nextVideoEl.controls = false;
+
+    try{
+      await nextVideoEl.play(); // iPadで再生されない原因はここが多い
+    }catch(e){
+      // もし失敗したら、ユーザーに操作を促すため controls を出す
+      nextVideoEl.controls = true;
+      try{ await nextVideoEl.play(); }catch(_){}
+      return;
+    }
+
+    // 再生終了を待つ
+    await new Promise(resolve=>{
+      const done = ()=>{ nextVideoEl.removeEventListener("ended", done); resolve(); };
+      nextVideoEl.addEventListener("ended", done, {once:true});
+    });
+  }
+
+  function nextStage(){
+    overlay.classList.remove("show");
+    stageIndex++;
+    if (stageIndex >= stageSizes.length){
+      stageIndex = 0;
+      state.score = 0;
+    }
+    resetStage();
+  }
+
+  /***********************
+   * 起動画面
+   ***********************/
+  function showStart(){
+    startOverlay.style.display = "flex";
+  }
+
+  async function beginGame(){
+    // 最初のクリックで音のロック解除
+    unlockAudio();
+
+    // はじめるBGMを開始 → ボタン音
+    startBeginBGM();
+    playSfx(SND.beginBtn, 1.0);
+
+    // 少し待ってからゲーム開始（演出）
+    await new Promise(r=>setTimeout(r, 400));
+
+    stopBeginBGM();
+    started = true;
+    startOverlay.style.display = "none";
+    resetStage();
+    startPlayBGM();
+  }
+
+  /***********************
+   * イベント
+   ***********************/
+  btnStart.addEventListener("click", ()=> startRun());
+  btnReset.addEventListener("click", ()=>{ if(started){ unlockAudio(); resetAllToStart(); } });
+  btnClear.addEventListener("click", ()=>{ if(started){ unlockAudio(); startPlayBGM(); clearCommands(); } });
+
+  btnNext.addEventListener("click", async ()=>{
+    if (!started) return;
+    btnNext.disabled = true;
+    try{
+      await playNextSequence();   // ✅ つぎへ.mp3 → つぎへ.mp4
+      nextStage();
+    } finally {
+      btnNext.disabled = false;
+    }
+  });
+
+  overlay.addEventListener("click", (e)=>{
+    // 背景タップで進むのはやめる（誤タップ防止）。必要なら戻す
+    // if (e.target===overlay){ nextStage(); }
+  });
+
+  btnBegin.addEventListener("click", ()=> beginGame());
+
+  window.addEventListener("resize", ()=>{
+    fitCanvas();
+    draw();
+  });
+
+  // init
+  buildCmdList();
+  buildSlots();
+  fitCanvas();
+  showStart();
+})();
+</script>
+</body>
+</html>
