@@ -434,7 +434,6 @@
           <div class="controls">
             <button class="primary" id="btnStart">スタート</button>
             <button id="btnReset">リセット</button>
-            <button id="btnShuffle" style="display:none; background:#8e44ad;">迷路をくみかえる</button>
             <button class="danger" id="btnClear">コマンド ぜんぶけす</button>
           </div>
         </div>
@@ -485,8 +484,7 @@
         <img id="nextSpaceImg" class="nextSpaceImg" alt="つぎの うちゅう" />
         <video id="nextVideo" class="nextVideo" playsinline webkit-playsinline></video>
       </div>
-      <div style="display:flex; justify-content:space-between; width:100%;">
-        <button id="btnSkip" style="display:none; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3);">スキップ</button>
+      <div style="display:flex; justify-content:flex-end;">
         <button id="btnNext" class="primary">つぎへ</button>
       </div>
     </div>
@@ -505,14 +503,12 @@
 
     crew1: "猫バス.png",
     crew2: "トトロ.png",
-    crew3: "メイ.png",
+    crew3: "メイ.png",            // ✅ 追加
     rocket: "ロケット.png",
     tape: "スーパーシールドテープ.png",
-    mama: "ママ.png",             // ✅ 追加
-    kaiju: "ゆあ怪獣.png",         // ✅ 追加
     nextSpace: "バズ宇宙へ.png",
 
-    startImg: "はじめる.png"
+    startImg: "はじめる.png"       // ✅ 起動画面
   };
 
   /***********************
@@ -616,8 +612,6 @@
     crew3: loadImg(IMG.crew3),
     rocket: loadImg(IMG.rocket),
     tape: loadImg(IMG.tape),
-    mama: loadImg(IMG.mama),
-    kaiju: loadImg(IMG.kaiju),
     nextSpace: loadImg(IMG.nextSpace),
     startImg: loadImg(IMG.startImg),
   };
@@ -632,18 +626,7 @@
   /***********************
    * ゲーム設定
    ***********************/
-  // ✅ ステージ構成をオブジェクト化
-  const STAGES = [
-    { size:4,  maze:false, items:["tape"], crews:3, enemies:[] },
-    { size:6,  maze:false, items:["tape"], crews:3, enemies:[] },
-    { size:8,  maze:false, items:["tape"], crews:3, enemies:[] },
-    // Stage 4 (10x10) は削除
-    // 追加ステージ
-    { size:7,  maze:true,  items:[],       crews:0, enemies:[] },         // 4: 本格迷路
-    { size:9,  maze:true,  items:["mama"], crews:0, enemies:[] },         // 5: ママといっしょ
-    { size:9,  maze:true,  items:[],       crews:0, enemies:["kaiju"] },  // 6: 鬼ごっこ
-    { size:9,  maze:true,  items:["mama"], crews:0, enemies:["kaiju"] },  // 7: ママ＆鬼ごっこ（新ステージ）
-  ];
+  const stageSizes = [4,6,8,10];
   let stageIndex = 0;
 
   const COMMANDS = [
@@ -656,9 +639,7 @@
   const MAX_SLOTS = 10;
 
   const state = {
-    config: STAGES[stageIndex], // 現在のステージ設定
-    size: STAGES[stageIndex].size,
-    board: [],         // ✅ 0=床, 1=壁
+    size: stageSizes[stageIndex],
     running:false,
     tickMs: 420,
     stepPtr:0,
@@ -666,10 +647,8 @@
     start:{x:0,y:0,dir:0},
     buzz:{x:0,y:0,dir:0},
     goal:{x:0,y:0},
-    crews:[],
-    items:[],          // ✅ 汎用アイテムリスト {x,y,type,got}
-    enemies:[],        // ✅ 敵リスト {x,y,type}
-    turn:0,            // ✅ ターン数（敵移動用）
+    crews:[],          // ✅ 3人に
+    tapes:new Set(),
     slots: new Array(MAX_SLOTS).fill(null),
     runQueue: [],
     message:""
@@ -694,11 +673,9 @@
   const btnStart = document.getElementById("btnStart");
   const btnReset = document.getElementById("btnReset");
   const btnClear = document.getElementById("btnClear");
-  const btnShuffle = document.getElementById("btnShuffle"); // ✅ 追加
 
   const overlay = document.getElementById("overlay");
   const btnNext = document.getElementById("btnNext");
-  const btnSkip = document.getElementById("btnSkip"); // ✅ 追加
   const nextSpaceImgEl = document.getElementById("nextSpaceImg");
   const nextVideoEl = document.getElementById("nextVideo");
 
@@ -711,8 +688,7 @@
   Promise.all([
     I.buzzUp.ready, I.buzzRight.ready, I.buzzDown.ready, I.buzzLeft.ready,
     I.crew1.ready, I.crew2.ready, I.crew3.ready,
-    I.rocket.ready, I.tape.ready, I.mama.ready, I.kaiju.ready,
-    I.nextSpace.ready, I.startImg.ready
+    I.rocket.ready, I.tape.ready, I.nextSpace.ready, I.startImg.ready
   ]).then(() => {
     nextSpaceImgEl.src = IMG.nextSpace;
     startImgEl.src = IMG.startImg;
@@ -829,100 +805,17 @@
     return {s, g};
   }
 
-  /***********************
-   * 迷路生成 (穴掘り法：標準)
-   ***********************/
-  function generateMaze(w, h){
-    // 1. まず全てを「壁(1)」で埋める
-    const board = [];
-    for(let y=0; y<h; y++){
-      board.push(new Array(w).fill(1));
-    }
-
-    // 2. 穴掘り職人 (中身の迷路を作る)
-    function dig(x, y){
-      board[y][x] = 0;
-
-      const dirs = [
-        {dx:0, dy:-2}, {dx:0, dy: 2}, 
-        {dx:-2, dy: 0}, {dx: 2, dy: 0}
-      ].sort(() => Math.random() - 0.5);
-
-      for(let d of dirs){
-        const nx = x + d.dx;
-        const ny = y + d.dy;
-        const wx = x + d.dx / 2;
-        const wy = y + d.dy / 2;
-
-        if (nx > 0 && nx < w && ny > 0 && ny < h && board[ny][nx] === 1){
-          board[wy][wx] = 0;
-          dig(nx, ny);
-        }
-      }
-    }
-
-    // 迷路生成を実行
-    dig(1, 1);
-
-    // 鬼ごっこ用の調整（内部の壁を少し減らして逃げやすくする）
-    if (stageIndex >= 5) {
-      for(let i=0; i<12; i++){
-        let rx = randInt(w-2)+1;
-        let ry = randInt(h-2)+1;
-        if(board[ry][rx] === 1) board[ry][rx] = 0;
-      }
-    }
-    
-    return board;
-  }
-
-
-
   function randomEmptyCell(occ){
     let guard=0;
     while(true){
       const c = {x:randInt(state.size), y:randInt(state.size)};
-      // 壁(1)はダメ
-      if (state.board[c.y] && state.board[c.y][c.x] === 1) continue;
-
       const k = key(c.x,c.y);
       if (!occ.has(k)) return c;
-      guard++; if (guard>5000) return c;
+      guard++; if (guard>3000) return c;
     }
   }
 
   let timer=null;
-
-  // マンハッタン距離で遠い場所を探す（迷路対応：BFSで経路確認は重いので、とりあえず距離で）
-  // ※ 迷路の場合は「到達可能か」が重要だが、穴掘り法なら全体がつながるはず
-  function pickStartGoalFar(){
-    const minDist = Math.max(3, Math.floor(state.size * 1.2));
-    let s, g, guard=0;
-    
-    // 安全装置：もし迷路生成に失敗して床がない場合用
-    const hasFloor = state.board.flat().includes(0);
-
-    do{
-      // スタート候補：必ず「床(0)」を選ぶ
-      do {
-        s = {x:randInt(state.size), y:randInt(state.size)};
-      } while(hasFloor && state.board[s.y][s.x] === 1);
-      
-      // 向き決定（壁に向かないようにする）
-      const dirs = validDirsForStart(s.x, s.y);
-      // もし周りが全部壁ならとりあえず上
-      s.dir = dirs.length ? dirs[randInt(dirs.length)] : 0;
-
-      // ゴール候補：必ず「床(0)」を選ぶ
-      do {
-        g = {x:randInt(state.size), y:randInt(state.size)};
-      } while(hasFloor && state.board[g.y][g.x] === 1);
-
-      guard++;
-      if (guard > 2000) break; // 無限ループ防止
-    } while ((s.x===g.x && s.y===g.y) || manhattan(s,g) < minDist);
-    return {s, g};
-  }
 
   function stopRun(){
     state.running=false;
@@ -934,7 +827,7 @@
 
   function updateHUD(){
     stageText.textContent = String(stageIndex+1);
-    stageMaxText.textContent = String(STAGES.length);
+    stageMaxText.textContent = String(stageSizes.length);
     sizeText.textContent = `${state.size}×${state.size}`;
     scoreText.textContent = String(state.score);
     tapeText.textContent = String(state.tapeGot);
@@ -946,24 +839,9 @@
     stopGoalBGM();
     startPlayBGM();
 
-    state.config = STAGES[stageIndex];
-    state.size = state.config.size;
+    state.size = stageSizes[stageIndex];
     state.stepPtr = 0;
     state.message = "";
-    state.turn = 0;
-
-    // マップ生成
-    if (state.config.maze){
-      state.board = generateMaze(state.size, state.size);
-      btnShuffle.style.display = "inline-block"; // 迷路ステージなら表示
-    } else {
-      // 全て床(0)
-      state.board = [];
-      for(let y=0; y<state.size; y++){
-        state.board.push(new Array(state.size).fill(0));
-      }
-      btnShuffle.style.display = "none"; // 迷路でないなら非表示
-    }
 
     const {s, g} = pickStartGoalFar();
     state.start = {x:s.x, y:s.y, dir:s.dir};
@@ -972,32 +850,21 @@
 
     const occ = new Set([ key(state.start.x,state.start.y), key(state.goal.x,state.goal.y) ]);
 
-    // クルー配置
+    // ✅ クルー 3人（猫バス/トトロ/メイ）
     state.crews = [];
-    for (let i=0; i<state.config.crews; i++){
+    for (let i=0;i<3;i++){
       const c = randomEmptyCell(occ);
       state.crews.push({x:c.x, y:c.y, met:false, idx:i});
       occ.add(key(c.x,c.y));
     }
 
-    // アイテム配置
-    state.items = [];
+    // テープ1つ
+    state.tapes = new Set();
+    const t = randomEmptyCell(occ);
+    state.tapes.add(key(t.x,t.y));
+
     state.tapeGot = 0;
     state.crewMet = 0;
-    
-    state.config.items.forEach(type => {
-      const c = randomEmptyCell(occ);
-      state.items.push({x:c.x, y:c.y, type:type, got:false});
-      occ.add(key(c.x,c.y));
-    });
-
-    // 敵配置
-    state.enemies = [];
-    state.config.enemies.forEach(type => {
-      const c = randomEmptyCell(occ);
-      state.enemies.push({x:c.x, y:c.y, type:type});
-      occ.add(key(c.x,c.y));
-    });
 
     state.slots = new Array(MAX_SLOTS).fill(null);
     state.runQueue = [];
@@ -1073,35 +940,16 @@
       for (let xx=0;xx<n;xx++){
         const x0 = bx + xx*cellW;
         const y0 = by + yy*cellH;
+        ctx.fillStyle = ((xx+yy)%2===0) ? "rgba(18,26,46,0.78)" : "rgba(15,22,40,0.78)";
+        ctx.fillRect(x0, y0, cellW, cellH);
+        ctx.strokeStyle = "rgba(27,42,74,0.55)";
+        ctx.strokeRect(x0, y0, cellW, cellH);
 
-        // 壁か床か
-        if (state.board[yy] && state.board[yy][xx] === 1){
-          // 壁
-          ctx.fillStyle = "rgba(45,55,80,0.9)";
-          ctx.fillRect(x0, y0, cellW, cellH);
-          ctx.strokeStyle = "rgba(100,120,150,0.5)";
-          ctx.strokeRect(x0, y0, cellW, cellH);
-        } else {
-          // 床
-          ctx.fillStyle = ((xx+yy)%2===0) ? "rgba(18,26,46,0.78)" : "rgba(15,22,40,0.78)";
-          ctx.fillRect(x0, y0, cellW, cellH);
-          ctx.strokeStyle = "rgba(27,42,74,0.55)";
-          ctx.strokeRect(x0, y0, cellW, cellH);
-        }
-
-        // アイテム描画
-        const item = state.items.find(i => i.x===xx && i.y===yy && !i.got);
-        if (item){
+        if (state.tapes.has(key(xx,yy))){
           ctx.save();
-          if (item.type === "tape"){
-            ctx.fillStyle = "rgba(255,211,108,0.08)";
-            ctx.fillRect(x0,y0,cellW,cellH);
-            if (I.tape.ok()) drawImageContain(I.tape.img, x0, y0, cellW, cellH, 0.92);
-          } else if (item.type === "mama"){
-            ctx.fillStyle = "rgba(255,108,139,0.08)";
-            ctx.fillRect(x0,y0,cellW,cellH);
-            if (I.mama.ok()) drawImageContain(I.mama.img, x0, y0, cellW, cellH, 0.92);
-          }
+          ctx.fillStyle = "rgba(255,211,108,0.08)";
+          ctx.fillRect(x0,y0,cellW,cellH);
+          if (I.tape.ok()) drawImageContain(I.tape.img, x0, y0, cellW, cellH, 0.92);
           ctx.restore();
         }
       }
@@ -1157,17 +1005,6 @@
     if (bi.ok()) drawImageContain(bi.img, px, py, cellW, cellH, 0.92);
     ctx.restore();
 
-    // 敵
-    state.enemies.forEach(e => {
-      const ex = bx + e.x*cellW;
-      const ey = by + e.y*cellH;
-      ctx.save();
-      if (e.type === "kaiju"){
-        if (I.kaiju.ok()) drawImageContain(I.kaiju.img, ex, ey, cellW, cellH, 0.92);
-      }
-      ctx.restore();
-    });
-
     if (state.message){
       ctx.save();
       ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -1193,24 +1030,14 @@
   function samePos(a,b){ return a.x===b.x && a.y===b.y; }
 
   function checkPickups(){
-    // アイテム取得
-    const itemIndex = state.items.findIndex(i => i.x===state.buzz.x && i.y===state.buzz.y && !i.got);
-    if (itemIndex !== -1){
-      const item = state.items[itemIndex];
-      item.got = true;
-      if (item.type === "tape"){
-        state.tapeGot++;
-        state.score += 80;
-        state.message = "テープ みっけ！";
-        playSfx(SND.itemSfx, 0.95);
-      } else if (item.type === "mama"){
-        state.score += 300;
-        state.message = "ままといっしょだよ";
-        playSfx(SND.itemSfx, 0.95);
-      }
+    const k = key(state.buzz.x, state.buzz.y);
+    if (state.tapes.has(k)){
+      state.tapes.delete(k);
+      state.tapeGot++;
+      state.score += 80;
+      state.message = "テープ みっけ！";
+      playSfx(SND.itemSfx, 0.95);
     }
-
-    // クルー救助
     state.crews.forEach(c=>{
       if (c.met) return;
       if (c.x===state.buzz.x && c.y===state.buzz.y){
@@ -1261,39 +1088,6 @@
     timer = setInterval(stepOnce, state.tickMs);
   }
 
-  // BFSで最短経路の次の1歩を求める
-  function getNextEnemyMove(enemy, target){
-    const q = [{x:enemy.x, y:enemy.y, path:[]}];
-    const visited = new Set([key(enemy.x, enemy.y)]);
-    
-    // 探索制限（重くなりすぎないよう）
-    let limit = 400;
-
-    while(q.length > 0 && limit-- > 0){
-      const cur = q.shift();
-      if (cur.x === target.x && cur.y === target.y){
-        return cur.path[0]; // 最初の1歩
-      }
-
-      const dirs = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
-      for(const d of dirs){
-        const nx = cur.x + d.dx;
-        const ny = cur.y + d.dy;
-        // 範囲外 or 壁
-        if (nx<0 || nx>=state.size || ny<0 || ny>=state.size) continue;
-        if (state.board[ny][nx] === 1) continue;
-        
-        const k = key(nx, ny);
-        if (!visited.has(k)){
-          visited.add(k);
-          const newPath = [...cur.path, {x:nx, y:ny}];
-          q.push({x:nx, y:ny, path:newPath});
-        }
-      }
-    }
-    return null; // 経路なし
-  }
-
   function stepOnce(){
     const cmd = state.runQueue[state.stepPtr];
     if (!cmd){
@@ -1311,77 +1105,17 @@
       const v = dirVec(state.buzz.dir);
       const nx = state.buzz.x + v.dx;
       const ny = state.buzz.y + v.dy;
-      
-      // 枠外チェック
       if (nx<0||nx>=state.size||ny<0||ny>=state.size){
         failAndAutoReset("そとだよ！ もどるね。");
         return;
       }
-      // 壁チェック
-      if (state.board[ny][nx] === 1){
-        // 壁なら進まない（その場で足踏み）
-        playSfx(SND.walkSfx, 0.35);
-        state.message = "かべだよ！";
-      } else {
-        state.buzz.x = nx; state.buzz.y = ny;
-        playSfx(SND.walkSfx, 0.35);
-      }
+      state.buzz.x = nx; state.buzz.y = ny;
+      playSfx(SND.walkSfx, 0.35); // ✅ 歩行音
     }
 
     checkPickups();
 
-    // 敵の移動（2ターンに1回）
-    state.turn++;
-    if (state.turn % 2 === 0){
-      state.enemies.forEach(e => {
-        if (e.type === "kaiju"){
-          const nextPos = getNextEnemyMove(e, state.buzz);
-          if (nextPos){
-            e.x = nextPos.x;
-            e.y = nextPos.y;
-          }
-        }
-      });
-    }
-
-    // 敵との接触判定
-    const hitEnemy = state.enemies.some(e => e.x === state.buzz.x && e.y === state.buzz.y);
-    if (hitEnemy){
-      failAndAutoReset("りくにい、いっしょにあーそぼ");
-      return;
-    }
-
-    // 敵が近くにいるか？
-    const nearEnemy = state.enemies.some(e => manhattan(e, state.buzz) <= 3);
-    if (nearEnemy){
-      state.message = "ゆあちゃんかいじゅうが そこまできている！";
-    }
-
     if (samePos(state.buzz, state.goal)){
-      // ゴール条件チェック
-      // ママステージ(Stage 6, 8)の場合、ママを持っていないと入れない
-      // User Request: if (stageIndex === 5 && !state.hasMom) -> indexが変わったので調整
-      // Stage 5(ママ単体), Stage 7(ママ＆鬼) で適用
-      const mamaItem = state.items.find(i => i.type === "mama");
-      const hasMom = mamaItem && mamaItem.got;
-      
-      // itemsにmamaが含まれているステージならチェックする形に汎用化
-      const needsMama = state.config.items.includes("mama");
-
-      if (needsMama && !hasMom){
-        // ゴールに入ろうとしたが弾かれる
-        // 1歩戻す（簡易的）
-        if (cmd==="F"){
-          const v = dirVec(state.buzz.dir);
-          state.buzz.x -= v.dx;
-          state.buzz.y -= v.dy;
-        }
-        state.message = "ママがよんでいるよ！";
-        draw();
-        state.stepPtr++; // コマンドは消費する
-        return;
-      }
-
       stopRun();
       state.score += 200;
       updateHUD();
@@ -1421,47 +1155,27 @@
     nextVideoEl.currentTime = 0;
     nextVideoEl.muted = false;
     nextVideoEl.controls = false;
-    
-    // スキップボタン表示
-    btnSkip.style.display = "block";
-
-    let resolveFunc = null;
-    const p = new Promise(resolve=>{ resolveFunc = resolve; });
-
-    const endHandler = () => {
-      cleanup();
-      resolveFunc();
-    };
-    
-    const skipHandler = () => {
-      nextVideoEl.pause();
-      cleanup();
-      resolveFunc();
-    };
-
-    const cleanup = () => {
-      nextVideoEl.removeEventListener("ended", endHandler);
-      btnSkip.removeEventListener("click", skipHandler);
-      btnSkip.style.display = "none";
-    };
-
-    nextVideoEl.addEventListener("ended", endHandler, {once:true});
-    btnSkip.addEventListener("click", skipHandler, {once:true});
 
     try{
-      await nextVideoEl.play(); 
+      await nextVideoEl.play(); // iPadで再生されない原因はここが多い
     }catch(e){
+      // もし失敗したら、ユーザーに操作を促すため controls を出す
       nextVideoEl.controls = true;
       try{ await nextVideoEl.play(); }catch(_){}
+      return;
     }
 
-    await p;
+    // 再生終了を待つ
+    await new Promise(resolve=>{
+      const done = ()=>{ nextVideoEl.removeEventListener("ended", done); resolve(); };
+      nextVideoEl.addEventListener("ended", done, {once:true});
+    });
   }
 
   function nextStage(){
     overlay.classList.remove("show");
     stageIndex++;
-    if (stageIndex >= STAGES.length){
+    if (stageIndex >= stageSizes.length){
       stageIndex = 0;
       state.score = 0;
     }
@@ -1499,13 +1213,6 @@
   btnStart.addEventListener("click", ()=> startRun());
   btnReset.addEventListener("click", ()=>{ if(started){ unlockAudio(); resetAllToStart(); } });
   btnClear.addEventListener("click", ()=>{ if(started){ unlockAudio(); startPlayBGM(); clearCommands(); } });
-  
-  // 迷路組み換えボタン
-  btnShuffle.addEventListener("click", ()=>{
-    if(!started) return;
-    unlockAudio();
-    resetStage(); // 同じステージ番号でリセット＝再生成
-  });
 
   btnNext.addEventListener("click", async ()=>{
     if (!started) return;
