@@ -520,7 +520,6 @@
    ***********************/
   const SND = {
     goalSfx: "ゴール.mp3",
-    itemSfx: "アイテム取得.mp3",
     cmdSfx:  "コマンド選択.mp3",
     walkSfx: "歩行音.mp3",         // ✅ 追加
     goalBgm: "ゴールBGM.mp3",
@@ -528,10 +527,14 @@
 
     beginBgm: "はじめるBGM.mp3",   // ✅ 起動画面BGM
     beginBtn: "はじめるボタン.mp3",// ✅ はじめる押下
-    nextSfx:  "つぎへ.mp3"         // ✅ つぎへ音
+    nextSfx:  "つぎへ.mp3",        // ✅ つぎへ音
+    mamaSfx:  "ママ動画.mp3",      // ✅ 追加
+    yuaSfx:   "ゆあ動画.mp3"       // ✅ 追加
   };
   const MOV = {
-    nextMp4: "つぎへ.mp4"          // ✅ つぎへ動画
+    nextMp4: "つぎへ.mp4",         // ✅ つぎへ動画
+    mamaMp4: "ママ動画.mp4",       // ✅ 追加
+    yuaMp4:  "ゆあ動画.mp4"        // ✅ 追加
   };
 
   let audioUnlocked = false;
@@ -591,6 +594,56 @@
     beginBGM.play().catch(()=>{});
   }
   function stopBeginBGM(){ try { beginBGM.pause(); } catch(_){} }
+
+  /**
+   * 汎用動画再生機能
+   * 任意の動画と音声を再生し、終わったら指定のcallbackを実行する
+   */
+  async function playInterruptVideo(mp3Src, mp4Src, onComplete) {
+    // 1. ゲームループを一時停止
+    stopRun();
+
+    // 2. BGMを止める
+    stopPlayBGM();
+    stopGoalBGM();
+    stopBeginBGM();
+
+    // 3. オーバーレイを表示し、Canvasや次の画像を隠して動画を表示
+    nextSpaceImgEl.style.display = "none";
+    nextVideoEl.classList.add("show");
+    overlay.classList.add("show");
+
+    // 4. 音声を再生し、動画を再生
+    playSfx(mp3Src, 1.0);
+    nextVideoEl.src = mp4Src;
+    nextVideoEl.currentTime = 0;
+    nextVideoEl.muted = false;
+    nextVideoEl.controls = false;
+
+    const endHandler = () => {
+      cleanup();
+      if (onComplete) onComplete();
+    };
+
+    const cleanup = () => {
+      nextVideoEl.removeEventListener("ended", endHandler);
+      nextVideoEl.pause();
+      nextVideoEl.removeAttribute("src");
+      nextVideoEl.load();
+      nextVideoEl.classList.remove("show");
+      overlay.classList.remove("show");
+    };
+
+    nextVideoEl.addEventListener("ended", endHandler, { once: true });
+
+    try {
+      await nextVideoEl.play();
+    } catch (e) {
+      // iOS/Safari対策：playが失敗した場合のフォールバック
+      nextVideoEl.controls = true;
+      try { await nextVideoEl.play(); } catch (_) {}
+    }
+  }
 
   /***********************
    * 画像ロード
@@ -672,7 +725,8 @@
     turn:0,            // ✅ ターン数（敵移動用）
     slots: new Array(MAX_SLOTS).fill(null),
     runQueue: [],
-    message:""
+    message:"",
+    kaijuCatchCount: 0 // ✅ 追加：怪獣に捕まった回数
   };
 
   /***********************
@@ -893,35 +947,58 @@
 
   let timer=null;
 
-  // マンハッタン距離で遠い場所を探す（迷路対応：BFSで経路確認は重いので、とりあえず距離で）
-  // ※ 迷路の場合は「到達可能か」が重要だが、穴掘り法なら全体がつながるはず
+  /**
+   * スタートとゴールの配置（迷路の道のりで最も遠い場所を選ぶ）
+   */
   function pickStartGoalFar(){
-    const minDist = Math.max(3, Math.floor(state.size * 1.2));
-    let s, g, guard=0;
-    
-    // 安全装置：もし迷路生成に失敗して床がない場合用
     const hasFloor = state.board.flat().includes(0);
+    if (!hasFloor) return { s: {x:0,y:0,dir:0}, g: {x:0,y:0} };
 
-    do{
-      // スタート候補：必ず「床(0)」を選ぶ
-      do {
-        s = {x:randInt(state.size), y:randInt(state.size)};
-      } while(hasFloor && state.board[s.y][s.x] === 1);
+    // 1. スタート地点をランダムな「床(0)」から選ぶ
+    let sx, sy;
+    do {
+      sx = randInt(state.size);
+      sy = randInt(state.size);
+    } while(state.board[sy][sx] === 1);
+
+    // 2. BFSで全マスの最短歩数を計算
+    const dists = Array.from({ length: state.size }, () => new Array(state.size).fill(-1));
+    const q = [{ x: sx, y: sy, d: 0 }];
+    dists[sy][sx] = 0;
+
+    let maxDist = 0;
+    let furthestCells = [{ x: sx, y: sy }];
+
+    while (q.length > 0) {
+      const cur = q.shift();
+      const dirs = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
       
-      // 向き決定（壁に向かないようにする）
-      const dirs = validDirsForStart(s.x, s.y);
-      // もし周りが全部壁ならとりあえず上
-      s.dir = dirs.length ? dirs[randInt(dirs.length)] : 0;
+      for (const d of dirs) {
+        const nx = cur.x + d.dx;
+        const ny = cur.y + d.dy;
+        if (nx >= 0 && nx < state.size && ny >= 0 && ny < state.size && state.board[ny][nx] === 0 && dists[ny][nx] === -1) {
+          const nd = cur.d + 1;
+          dists[ny][nx] = nd;
+          q.push({ x: nx, y: ny, d: nd });
 
-      // ゴール候補：必ず「床(0)」を選ぶ
-      do {
-        g = {x:randInt(state.size), y:randInt(state.size)};
-      } while(hasFloor && state.board[g.y][g.x] === 1);
+          if (nd > maxDist) {
+            maxDist = nd;
+            furthestCells = [{ x: nx, y: ny }];
+          } else if (nd === maxDist) {
+            furthestCells.push({ x: nx, y: ny });
+          }
+        }
+      }
+    }
 
-      guard++;
-      if (guard > 2000) break; // 無限ループ防止
-    } while ((s.x===g.x && s.y===g.y) || manhattan(s,g) < minDist);
-    return {s, g};
+    // 3. 最も遠いマスの中からランダムにゴールを選ぶ
+    const g = furthestCells[randInt(furthestCells.length)];
+    
+    // 向き決定（壁に向かないようにする）
+    const startDirs = validDirsForStart(sx, sy);
+    const s = { x: sx, y: sy, dir: startDirs.length ? startDirs[randInt(startDirs.length)] : 0 };
+
+    return { s, g };
   }
 
   function stopRun(){
@@ -995,7 +1072,8 @@
     state.enemies = [];
     state.config.enemies.forEach(type => {
       const c = randomEmptyCell(occ);
-      state.enemies.push({x:c.x, y:c.y, type:type});
+      // ✅ 初期位置 (startX, startY) を保持
+      state.enemies.push({x:c.x, y:c.y, startX:c.x, startY:c.y, type:type});
       occ.add(key(c.x,c.y));
     });
 
@@ -1015,6 +1093,12 @@
     state.buzz = {x: state.start.x, y: state.start.y, dir: state.start.dir};
     state.stepPtr = 0;
     state.message = "リセット！";
+
+    // ✅ 敵の位置も初期位置に戻す
+    state.enemies.forEach(e => {
+      e.x = e.startX;
+      e.y = e.startY;
+    });
 
     state.slots = new Array(MAX_SLOTS).fill(null);
     state.runQueue = [];
@@ -1207,6 +1291,10 @@
         state.score += 300;
         state.message = "ままといっしょだよ";
         playSfx(SND.itemSfx, 0.95);
+        // ✅ 追加：ママ取得時の動画再生
+        playInterruptVideo(SND.mamaSfx, MOV.mamaMp4, () => {
+          startRun(); // 再生終了後、ゲーム（startRunの状態）に復帰させる
+        });
       }
     }
 
@@ -1230,6 +1318,13 @@
     state.buzz = {x: state.start.x, y: state.start.y, dir: state.start.dir};
     state.stepPtr = 0;
     state.message = msg || "しっぱい！ もどるよ。";
+
+    // ✅ 敵の位置も初期位置に戻す
+    state.enemies.forEach(e => {
+      e.x = e.startX;
+      e.y = e.startY;
+    });
+
     draw();
   }
 
@@ -1347,7 +1442,16 @@
     // 敵との接触判定
     const hitEnemy = state.enemies.some(e => e.x === state.buzz.x && e.y === state.buzz.y);
     if (hitEnemy){
-      failAndAutoReset("りくにい、いっしょにあーそぼ");
+      state.kaijuCatchCount++; // ✅ 追加：捕まった回数をカウント
+      
+      if (state.kaijuCatchCount === 3) {
+        // ✅ 3回目なら特別な動画を再生
+        playInterruptVideo(SND.yuaSfx, MOV.yuaMp4, () => {
+          failAndAutoReset("りくにい、いっしょにあーそぼ");
+        });
+      } else {
+        failAndAutoReset("りくにい、いっしょにあーそぼ");
+      }
       return;
     }
 
